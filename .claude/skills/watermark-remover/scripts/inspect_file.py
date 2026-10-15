@@ -17,6 +17,8 @@ pdf
   python inspect_file.py draft.cleaned.md
   python inspect_file.py draft.md --compare draft.cleaned.md
   python inspect_file.py draft.md --json
+  python inspect_file.py /mnt/project/            # 폴더 안 지원 파일 전부 요약표
+  python inspect_file.py a.md b.pdf c.docx --detail
 """
 
 from __future__ import annotations
@@ -396,32 +398,89 @@ def print_compare(a: dict, b: dict) -> None:
     print("\n  " + STAT_NOTE)
 
 
+SUPPORTED = TEXT_EXTS | OFFICE_EXTS | {".pdf"}
+
+
+def collect(paths: list[str]) -> list[Path]:
+    """파일·폴더를 받아 검사할 파일 목록을 만든다 (폴더는 하위까지, 지원 형식만)."""
+    out = []
+    for raw in paths:
+        p = Path(raw)
+        if p.is_dir():
+            out += sorted(f for f in p.rglob("*") if f.is_file() and f.suffix.lower() in SUPPORTED
+                          and ".cleaned." not in f.name and "_clean." not in f.name)
+        elif p.is_file():
+            out.append(p)
+        else:
+            print(f"[건너뜀] 없는 경로: {p}", file=sys.stderr)
+    return out
+
+
+def print_summary(reports: list[dict]) -> None:
+    print(f"■ 여러 파일 요약 ({len(reports)}개) — 읽기 전용 검사, 파일은 바뀌지 않았습니다\n")
+    names = [Path(r["file"]).name for r in reports]
+    w = max([sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in n) for n in names] + [8])
+    print(f"  {pad('파일', w)}  {'숨은 문자':>8}  메타데이터 / 주요 항목")
+    for r, n in zip(reports, names):
+        if "error" in r:
+            print(f"  {pad(n, w)}  {'-':>8}  검사 실패: {r['error']}")
+            continue
+        hidden = sum(v["count"] for k, v in r["findings"].items() if k not in ("line_endings",))
+        kinds = [CATEGORIES[k][0] for k in r["findings"]]
+        meta = [k if not k.startswith(("front", "html", "markdown")) else
+                {"front_matter": "front matter", "html_comments": "HTML 주석", "markdown_comments": "마크다운 주석",
+                 "html_meta_tags": "meta 태그"}.get(k, "") for k in r["metadata"] if k != "html_comment_count"]
+        detail = ", ".join(kinds + meta) or "발견 없음"
+        print(f"  {pad(n, w)}  {hidden:>8}  {detail}")
+    print("\n  파일별 자세한 내용: python inspect_file.py <파일>  (또는 --detail)")
+    print("\n  " + STAT_NOTE)
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="숨은 문자·메타데이터 검사 (읽기 전용)",
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    p.add_argument("file")
-    p.add_argument("--compare", metavar="FILE", help="정돈 후 파일과 전후 비교표 출력")
+    p.add_argument("files", nargs="+", help="파일 또는 폴더 (여러 개 가능)")
+    p.add_argument("--compare", metavar="FILE", help="정돈 후 파일과 전후 비교표 출력 (파일 하나일 때)")
+    p.add_argument("--detail", action="store_true", help="여러 파일일 때 요약표 대신 파일별 전체 보고")
     p.add_argument("--json", action="store_true", help="결과를 JSON으로 출력")
     args = p.parse_args(argv)
 
-    path = Path(args.file)
-    if not path.is_file():
-        p.error(f"파일이 없습니다: {path}")
-    rep = inspect(path)
+    files = collect(args.files)
+    if not files:
+        p.error("검사할 파일이 없습니다")
+
     if args.compare:
+        if len(files) != 1:
+            p.error("--compare 는 원본 파일 하나와 함께 쓰세요")
         other = Path(args.compare)
         if not other.is_file():
             p.error(f"파일이 없습니다: {other}")
-        rep2 = inspect(other)
+        rep, rep2 = inspect(files[0]), inspect(other)
         if args.json:
             print(json.dumps({"before": rep, "after": rep2}, ensure_ascii=False, indent=2))
         else:
             print_compare(rep, rep2)
         return 0
+
+    reports = []
+    for f in files:
+        try:
+            reports.append(inspect(f))
+        except Exception as e:  # 한 파일이 깨져도 나머지는 계속
+            reports.append({"file": str(f), "error": str(e)[:80]})
     if args.json:
-        print(json.dumps(rep, ensure_ascii=False, indent=2))
+        print(json.dumps(reports[0] if len(reports) == 1 else reports, ensure_ascii=False, indent=2))
+    elif len(reports) == 1 and "error" not in reports[0]:
+        print_report(reports[0])
+    elif args.detail:
+        for r in reports:
+            if "error" in r:
+                print(f"■ {r['file']}: 검사 실패 ({r['error']})\n")
+            else:
+                print_report(r)
+                print()
     else:
-        print_report(rep)
+        print_summary(reports)
     return 0
 
 
