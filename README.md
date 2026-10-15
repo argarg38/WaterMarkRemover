@@ -8,6 +8,7 @@
 | **PDF** | 워터마크 주석·워터마크 표시 영역·기울어진/반투명 큰 글씨·지정 문구를 삭제 | 글자 선택·검색 유지 |
 | **스캔 PDF · 이미지** | 워터마크 부분을 주변 픽셀로 메움 (OpenCV inpainting) | 작은 워터마크에 적합 |
 | .doc .ppt .xls .rtf .odt .hwp | LibreOffice로 docx/pptx/xlsx 변환 후 처리 | 변환된 형식으로 저장 |
+| **텍스트 (.md .txt 등)** | 숨은 문자·메타데이터 검사 후 새 파일로 정돈 | 원본 그대로, `이름.cleaned.md` |
 
 같은 도구를 세 곳에서 쓸 수 있습니다.
 
@@ -53,6 +54,24 @@ python $S photo.jpg --box 75%,88%,24%,10%
 python $S photos/ -o photos_clean/ --shared   # 여러 장의 공통 워터마크
 ```
 
+### 텍스트 파일: 숨은 문자·메타데이터 검사
+
+```bash
+D=.claude/skills/watermark-remover/scripts
+
+python $D/inspect_file.py draft.md                          # 1) 검사만 (파일 안 바뀜)
+python $D/clean_text.py draft.md -o draft.cleaned.md        # 2) 새 파일로 정돈 (원본 덮어쓰기는 거부)
+python $D/inspect_file.py draft.cleaned.md                  # 3) 같은 도구로 재검사
+python $D/inspect_file.py draft.md --compare draft.cleaned.md   # 4) 전후 비교표
+```
+
+찾는 것: 제로폭 문자, 방향 제어 문자, 유니코드 태그 문자(숨은 글자 해독), 이모지가 아닌 곳의 변형 선택자, 제어 문자,
+특수 공백, 키릴/그리스 글자가 섞인 단어, BOM, 분리 저장된 한글(NFC), 줄바꿈 혼용, front matter·HTML 주석.
+docx·pptx·xlsx·pdf는 문서 속성·메모·변경 추적·숨김 글자도 검사합니다.
+
+> **통계적 텍스트 워터마크**(AI가 글을 만들 때 단어 선택 확률에 심는 패턴)는 이 도구로 탐지·제거·제거 확인을 할 수 없습니다.
+> 숨은 문자 0건은 숨은 문자가 없다는 뜻일 뿐, 통계적 워터마크가 없다는 뜻이 아닙니다.
+
 ### 주요 옵션
 
 | 옵션 | 대상 | 설명 |
@@ -77,6 +96,8 @@ python $S photos/ -o photos_clean/ --shared   # 여러 장의 공통 워터마�
 2. claude.ai → **설정(Settings) → 기능(Capabilities)** 에서 **코드 실행 및 파일 생성**이 켜져 있는지 확인합니다.
 3. 같은 화면의 **스킬(Skills)** 에서 zip 파일을 업로드하고 켭니다.
 4. 채팅에 이미지·PDF·Word 등을 올리고 "워터마크 지워줘"라고 하면 됩니다.
+   텍스트 파일은 "draft.md 숨은 문자 검사하고 정돈해줘"처럼 말하면, Claude가 명령어를 먼저 보여주고
+   검사 → 새 파일로 정돈 → 재검사·전후 비교 순서로 진행합니다 (원본은 바꾸지 않음).
    문서를 요약·분석시키다가 워터마크 글자가 섞여 방해될 때도 Claude가 이 스킬로 먼저 정리합니다.
 
 스킬 내용을 고친 뒤에는 `bash tools/build_skill_zip.sh`로 zip을 다시 만들고 다시 업로드하세요.
