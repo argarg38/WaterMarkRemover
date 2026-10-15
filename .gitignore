@@ -1,0 +1,5 @@
+__pycache__/
+*_clean.*
+*_clean/
+*_preview.jpg
+*_mask.png
