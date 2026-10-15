@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""이미지 워터마크 제거 도구 (OpenCV inpainting).
+"""워터마크 제거 도구 — 이미지는 여기서 직접, 문서는 전용 스크립트로 넘긴다.
+
+  .pdf                          → remove_pdf_watermark.py
+  .docx .pptx .xlsx (.doc 등)   → remove_office_watermark.py
+  그 밖의 이미지                 → 아래 OpenCV inpainting
 
 워터마크 위치를 마스크로 만든 뒤, 그 부분을 주변 픽셀로 채워 지운다.
 마스크를 만드는 방법은 네 가지다.
@@ -232,7 +236,30 @@ def sibling(dst: Path, opt: str, suffix: str, ext: str) -> Path:
 
 # ---------------------------------------------------------------- main
 
+PDF_EXTS = {".pdf"}
+OFFICE_EXTS = {".docx", ".docm", ".dotx", ".dotm", ".pptx", ".pptm", ".potx", ".xlsx", ".xlsm", ".xltx",
+               ".doc", ".dot", ".rtf", ".odt", ".hwp", ".ppt", ".odp", ".xls", ".ods"}
+
+
+def route_documents(argv) -> int | None:
+    """입력이 문서면 PDF/오피스 전용 스크립트로 넘긴다."""
+    args = sys.argv[1:] if argv is None else list(argv)
+    first = next((a for a in args if not a.startswith("-")), "")
+    ext = Path(first).suffix.lower()
+    if ext not in PDF_EXTS | OFFICE_EXTS:
+        return None
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    if ext in PDF_EXTS:
+        import remove_pdf_watermark as mod
+    else:
+        import remove_office_watermark as mod
+    return mod.main(args)
+
+
 def main(argv=None) -> int:
+    routed = route_documents(argv)
+    if routed is not None:
+        return routed
     p = argparse.ArgumentParser(description="이미지 워터마크 제거 (OpenCV inpainting)",
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     p.add_argument("input", help="이미지 파일 또는 폴더")

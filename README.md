@@ -1,14 +1,20 @@
 # WaterMarkRemover
 
-이미지에서 워터마크·로고·글씨·날짜 도장을 지우는 도구입니다.
-지울 곳을 마스크로 잡고 OpenCV inpainting으로 주변 픽셀을 채워 넣습니다.
+이미지와 문서(PDF · Word · PowerPoint · Excel)에서 워터마크를 지우는 도구입니다.
 
-같은 도구를 세 가지 방식으로 쓸 수 있습니다.
+| 형식 | 지우는 방식 | 결과 |
+|---|---|---|
+| **docx · pptx · xlsx** | 문서 속 워터마크 개체(Word 워터마크, WordArt, 배경 그림, 머리글 그림, 지정 문구 도형)만 삭제 | 본문은 그대로, 편집 가능 |
+| **PDF** | 워터마크 주석·워터마크 표시 영역·기울어진/반투명 큰 글씨·지정 문구를 삭제 | 글자 선택·검색 유지 |
+| **스캔 PDF · 이미지** | 워터마크 부분을 주변 픽셀로 메움 (OpenCV inpainting) | 작은 워터마크에 적합 |
+| .doc .ppt .xls .rtf .odt .hwp | LibreOffice로 docx/pptx/xlsx 변환 후 처리 | 변환된 형식으로 저장 |
+
+같은 도구를 세 곳에서 쓸 수 있습니다.
 
 | 어디서 | 어떻게 |
 |---|---|
-| 터미널 | `python .claude/skills/watermark-remover/scripts/remove_watermark.py ...` |
-| Claude Code | 이 저장소를 열면 `watermark-remover` 스킬이 자동으로 잡힘. "이 사진 워터마크 지워줘" 라고 말하거나 `/watermark-remover` 입력 |
+| 터미널 | `python .claude/skills/watermark-remover/scripts/remove_watermark.py 파일` |
+| Claude Code | 이 저장소를 열면 `watermark-remover` 스킬이 자동으로 잡힘. "이 문서 워터마크 지워줘" 또는 `/watermark-remover` |
 | claude.ai 채팅 | `dist/watermark-remover.zip`을 스킬로 업로드 (아래 참고) |
 
 ## 설치
@@ -21,41 +27,63 @@ pip install -r requirements.txt
 
 ## 터미널에서 쓰기
 
+파일 종류는 확장자로 알아서 구분합니다. 결과는 기본적으로 `원본이름_clean.확장자`로 저장되고 원본은 그대로 둡니다.
+
 ```bash
 S=.claude/skills/watermark-remover/scripts/remove_watermark.py
 
-# 오른쪽 아래 반투명 흰 글씨 자동 탐지 + 비교 이미지 저장
+# 문서: 먼저 무엇이 지워질지 확인 (아무것도 바꾸지 않음)
+python $S 보고서.pdf --list
+python $S 보고서.docx --list
+
+# 자동으로 찾아 지우기
+python $S 보고서.docx
+python $S 보고서.pdf --preview          # 원본|결과 비교 이미지도 저장
+
+# 문구를 지정해서 지우기 (여러 번 가능, 대소문자·띄어쓰기 무시)
+python $S 보고서.pdf --text "대외비" --text CONFIDENTIAL
+python $S 발표.pptx --text DRAFT
+
+# 스캔한 PDF는 이미지 방식으로
+python $S 스캔.pdf --raster --auto --region center --preview
+
+# 이미지
 python $S photo.jpg --auto --region br --preview
-
-# 영역 직접 지정: x,y,너비,높이 (픽셀 또는 %)
 python $S photo.jpg --box 75%,88%,24%,10%
-
-# 폴더 일괄 처리: 여러 장에 같은 자리 같은 워터마크가 있으면 자동으로 찾음 (같은 크기 3장 이상)
-python $S photos/ -o photos_clean/ --shared --preview
+python $S photos/ -o photos_clean/ --shared   # 여러 장의 공통 워터마크
 ```
 
-결과는 기본적으로 `photo_clean.jpg`처럼 원본 옆에 저장됩니다. `--preview`를 붙이면 `원본 | 마스크(빨강) | 결과`를 나란히 붙인 비교 이미지도 만들어집니다.
+### 주요 옵션
 
-| 옵션 | 설명 |
-|---|---|
-| `--box X,Y,W,H` | 지울 영역. 여러 번 쓸 수 있음 |
-| `--auto` | 자동 탐지. `--region tl/tr/bl/br/top/bottom/center/all`, `--color light/dark/any` |
-| `--shared` | 폴더 안 공통 워터마크 탐지 |
-| `--mask FILE` | 직접 만든 마스크(흰색 = 지울 곳) |
-| `--dilate N` | 마스크를 N픽셀 넓힘 (테두리가 남을 때 키우기, 기본 3) |
-| `--threshold N` | 자동 탐지 민감도 (낮을수록 많이 잡음) |
-| `--preview`, `--save-mask` | 비교 이미지 / 마스크 저장 |
+| 옵션 | 대상 | 설명 |
+|---|---|---|
+| `--list` | 문서 | 바꾸지 않고 지울 항목과 후보(반복 글씨, 머리글/바닥글 내용)만 보여줌 |
+| `--text 문구` | 문서 | 그 문구로 된 글자·도형·머리글/바닥글 문구 삭제 |
+| `--no-heuristic` | PDF | 기울어진/반투명 큰 글씨 자동 삭제 끄기 |
+| `--raster` (+ `--pages 1-3`, `--dpi`) | PDF | 스캔본을 이미지 방식으로 처리 |
+| `--behind-images` | docx | 머리글에 '텍스트 뒤'로 깔린 그림도 삭제 |
+| `--password` | PDF | 암호 걸린 PDF |
+| `--preview` | PDF·이미지 | 비교 이미지 저장 |
+| `--box X,Y,W,H` | 이미지 | 지울 영역 (픽셀 또는 %) |
+| `--auto` (+ `--region`, `--color`) | 이미지 | 반투명 글씨 자동 탐지 |
+| `--shared` | 이미지 폴더 | 여러 장 공통 워터마크 탐지 |
+| `--dilate`, `--threshold` | 이미지 | 마스크 넓히기 / 탐지 민감도 |
+
+전체 도움말은 `-h`. 형식별 스크립트(`remove_pdf_watermark.py`, `remove_office_watermark.py`)를 직접 실행해도 됩니다.
 
 ## claude.ai 채팅에 스킬로 추가하기
 
 1. 이 저장소의 [`dist/watermark-remover.zip`](dist/watermark-remover.zip)을 내려받습니다.
 2. claude.ai → **설정(Settings) → 기능(Capabilities)** 에서 **코드 실행 및 파일 생성**이 켜져 있는지 확인합니다.
-3. 같은 화면의 **스킬(Skills)** 에서 **스킬 업로드**를 눌러 zip 파일을 올리고 켭니다.
-4. 새 채팅에 이미지를 올리고 "워터마크 지워줘"라고 하면 Claude가 스킬을 써서 결과 파일을 돌려줍니다.
+3. 같은 화면의 **스킬(Skills)** 에서 zip 파일을 업로드하고 켭니다.
+4. 채팅에 이미지·PDF·Word 등을 올리고 "워터마크 지워줘"라고 하면 됩니다.
+   문서를 요약·분석시키다가 워터마크 글자가 섞여 방해될 때도 Claude가 이 스킬로 먼저 정리합니다.
 
 스킬 내용을 고친 뒤에는 `bash tools/build_skill_zip.sh`로 zip을 다시 만들고 다시 업로드하세요.
 
 ## 한계
 
-- 작은 글씨·로고에 잘 맞습니다. 복잡한 그림 위의 큰 워터마크나 사진 전체를 덮는 반복 워터마크는 흔적이 남을 수 있습니다.
-- 내가 찍었거나 쓸 권리가 있는 이미지에 쓰세요. 스톡 사진 등 남의 저작물 워터마크를 지워 무단으로 쓰는 것은 저작권 침해가 될 수 있습니다.
+- PDF는 만든 프로그램마다 워터마크를 넣는 방식이 달라 자동 탐지가 놓칠 수 있습니다. `--list` → `--text` → `--raster` 순서로 시도하세요.
+- PDF `--text`는 본문 문장 안에 같은 단어가 있으면 그 조각도 지울 수 있습니다. 출력 로그를 확인하세요.
+- 이미지 방식은 작은 글씨·로고에 잘 맞습니다. 페이지 전체를 덮는 반복 워터마크는 흔적이 남을 수 있습니다.
+- 내가 만들었거나 쓸 권리가 있는 파일에 쓰세요. 남의 저작물 워터마크를 지워 무단으로 쓰는 것은 저작권 침해가 될 수 있습니다.

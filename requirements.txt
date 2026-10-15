@@ -1,2 +1,6 @@
 opencv-python-headless>=4.8
 numpy>=1.24
+pypdf>=4.0
+lxml>=4.9
+Pillow>=10.0
+pypdfium2>=4.0  # PDF 미리보기/스캔본 처리 (없으면 pdftoppm 사용)
